@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { assertAuth, AuthError } from '@/lib/auth';
 import db from '@/lib/db';
 import { streams, audioRooms, streamMembers, streamBans } from '@/lib/db/schema';
+import { viewerTokenLimiter, getIp } from '@/lib/ratelimit';
 
 export async function GET(req: NextRequest) {
   try {
@@ -54,12 +55,22 @@ export async function GET(req: NextRequest) {
         if (audioRoom.status === 'ended') {
           return Response.json({ error: 'Room has ended' }, { status: 410 });
         }
+        if (audioRoom.status === 'scheduled' && audioRoom.hostId !== user.id) {
+          return Response.json({ error: 'Room has not started yet' }, { status: 425 });
+        }
+        const isRoomHost = audioRoom.hostId === user.id;
         const at = new AccessToken(
           process.env.LIVEKIT_API_KEY!,
           process.env.LIVEKIT_API_SECRET!,
           { identity: user.id, name: user.name, ttl: '4h' },
         );
-        at.addGrant({ room, roomJoin: true, canPublish: true, canPublishData: true, canSubscribe: true });
+        at.addGrant({
+          room,
+          roomJoin: true,
+          canPublish: isRoomHost || audioRoom.status === 'active',
+          canPublishData: true,
+          canSubscribe: true,
+        });
         return Response.json({ token: await at.toJwt() });
       }
 
@@ -86,6 +97,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Viewer — public, no sign-in required
+    if (viewerTokenLimiter) {
+      const ip = getIp(req.headers);
+      const { success } = await viewerTokenLimiter.limit(ip);
+      if (!success) return Response.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
     const { auth } = await import('@clerk/nextjs/server');
     const { userId } = await auth();
 

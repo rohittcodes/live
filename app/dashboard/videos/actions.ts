@@ -23,7 +23,7 @@ export async function deleteVideo(id: string) {
         `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/stream/${video.cloudflareVideoId}`,
         {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_STREAM_TOKEN}` },
+          headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_STREAM_API_TOKEN}` },
         },
       );
     } catch { /* continue even if Cloudflare fails */ }

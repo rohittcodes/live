@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { eq, desc } from 'drizzle-orm';
 import Link from 'next/link';
 import { RadioIcon, CopyIcon, ExternalLinkIcon, UsersIcon } from 'lucide-react';
-import { requireAdmin } from '@/lib/auth';
+import { requireAdmin, requireOwnerOrAdmin } from '@/lib/auth';
 import db from '@/lib/db';
 import { streams, streamMembers } from '@/lib/db/schema';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,7 +16,6 @@ import { EndStreamButton } from './end-stream-button';
 import { RecordingButton } from './recording-button';
 
 export default async function StreamDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireAdmin();
   const { id } = await params;
 
   const stream = await db.query.streams.findFirst({
@@ -24,6 +23,8 @@ export default async function StreamDetailPage({ params }: { params: Promise<{ i
     with: { host: true },
   });
   if (!stream) notFound();
+
+  await requireOwnerOrAdmin(stream.hostId);
 
   const joinRequests = await db.query.streamMembers.findMany({
     where: eq(streamMembers.streamId, id),

@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.CLOUDFLARE_STREAM_TOKEN}`,
+          Authorization: `Bearer ${process.env.CLOUDFLARE_STREAM_API_TOKEN}`,
           'Tus-Resumable': '1.0.0',
           'Upload-Length': String(fileSize),
           'Upload-Metadata': `name ${btoa(title)},requiresignedurls`,

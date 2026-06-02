@@ -13,13 +13,19 @@ export async function POST(request: NextRequest) {
       const name = [first_name, last_name].filter(Boolean).join(' ') || 'Anonymous';
       const email = email_addresses[0]?.email_address ?? '';
 
-      await db
-        .insert(users)
-        .values({ id, name, username: username ?? null, email, imageUrl: image_url })
-        .onConflictDoUpdate({
-          target: users.id,
-          set: { name, username: username ?? null, email, imageUrl: image_url, updatedAt: new Date() },
-        });
+      try {
+        await db
+          .insert(users)
+          .values({ id, name, username: username ?? null, email, imageUrl: image_url })
+          .onConflictDoUpdate({
+            target: users.id,
+            set: { name, username: username ?? null, email, imageUrl: image_url, updatedAt: new Date() },
+          });
+      } catch (syncErr) {
+        // Unique constraint on email/username — log and continue so webhook returns 200
+        // (prevents Clerk retry loops when a duplicate exists)
+        console.error('[clerk webhook] user sync conflict, skipping:', id, syncErr);
+      }
     }
 
     if (evt.type === 'user.deleted' && evt.data.id) {

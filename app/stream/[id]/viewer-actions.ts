@@ -2,13 +2,23 @@
 
 import { eq, and } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import { assertAuth, assertOwnerOrAdmin, AuthError } from '@/lib/auth';
 import db from '@/lib/db';
 import { streams, streamMembers, streamBans } from '@/lib/db/schema';
+import { joinRequestLimiter, getIp } from '@/lib/ratelimit';
 
 export async function requestToJoin(streamId: string) {
   const user = await assertAuth();
+
+  if (joinRequestLimiter) {
+    const { success } = await joinRequestLimiter.limit(user.id);
+    if (!success) throw new AuthError(429 as never, 'Too many join requests. Try again in a minute.');
+  }
+
+  const stream = await db.query.streams.findFirst({ where: eq(streams.id, streamId) });
+  if (!stream) throw new AuthError(404 as never, 'Stream not found');
 
   const ban = await db.query.streamBans.findFirst({
     where: and(eq(streamBans.streamId, streamId), eq(streamBans.userId, user.id)),

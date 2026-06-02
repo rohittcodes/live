@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { ClerkProvider } from '@clerk/nextjs';
 import { DM_Sans, Outfit, JetBrains_Mono } from 'next/font/google';
 import { AppSidebar } from '@/components/app-sidebar';
@@ -35,14 +36,15 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUser();
+  const [user, headersList] = await Promise.all([getCurrentUser(), headers()]);
+  const nonce = headersList.get('x-nonce') ?? '';
 
   return (
     <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
         <head>
           {/* Runs before React hydration — prevents flash of wrong theme */}
-          <script dangerouslySetInnerHTML={{ __html: `
+          <script nonce={nonce} dangerouslySetInnerHTML={{ __html: `
             try {
               var t = localStorage.getItem('theme') || 'system';
               var r = t === 'system'

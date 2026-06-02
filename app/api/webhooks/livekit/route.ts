@@ -168,7 +168,7 @@ async function copyToCloudflareStream(url: string, name: string): Promise<string
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.CLOUDFLARE_STREAM_TOKEN}`,
+          Authorization: `Bearer ${process.env.CLOUDFLARE_STREAM_API_TOKEN}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ url, meta: { name } }),

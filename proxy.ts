@@ -19,21 +19,49 @@ const isPublicRoute = createRouteMatcher([
 const isAdminRoute = createRouteMatcher(['/admin(.*)']);
 const isSettingsRoute = createRouteMatcher(['/settings(.*)']);
 
+function buildCsp(nonce: string): string {
+  const livekitHost = (process.env.NEXT_PUBLIC_LIVEKIT_URL ?? '').replace(/^wss?:\/\//, '');
+  const cfSubdomain = process.env.CLOUDFLARE_STREAM_CUSTOMER_SUBDOMAIN ?? '';
+  const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL ?? '';
+  const r2Host = r2PublicUrl ? new URL(r2PublicUrl).host : '';
+
+  return [
+    "default-src 'self'",
+    // nonce replaces unsafe-inline; unsafe-eval retained for LiveKit WASM codec
+    `script-src 'self' 'nonce-${nonce}' 'unsafe-eval'`,
+    "style-src 'self' 'unsafe-inline'",
+    [
+      "img-src 'self' data: blob: https://imagedelivery.net https://img.clerk.com",
+      cfSubdomain && `https://${cfSubdomain}`,
+    ].filter(Boolean).join(' '),
+    [
+      "media-src 'self' blob:",
+      cfSubdomain && `https://${cfSubdomain}`,
+      r2Host && `https://${r2Host}`,
+    ].filter(Boolean).join(' '),
+    [
+      "connect-src 'self' https://api.cloudflare.com https://clerk.com https://*.clerk.accounts.dev",
+      livekitHost && `wss://${livekitHost} https://${livekitHost}`,
+    ].filter(Boolean).join(' '),
+    "worker-src 'self' blob:",
+    "font-src 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+}
+
 export default clerkMiddleware(async (auth, req) => {
-  if (isAdminRoute(req)) {
+  if (isAdminRoute(req) || isSettingsRoute(req) || !isPublicRoute(req)) {
     await auth.protect();
-    return NextResponse.next();
   }
 
-  // Settings uses a catch-all route for Clerk's UserProfile — protect the root only
-  if (isSettingsRoute(req)) {
-    await auth.protect();
-    return NextResponse.next();
-  }
+  const nonce = btoa(crypto.randomUUID());
+  const reqHeaders = new Headers(req.headers);
+  reqHeaders.set('x-nonce', nonce);
 
-  if (!isPublicRoute(req)) {
-    await auth.protect();
-  }
+  return NextResponse.next({
+    request: { headers: reqHeaders },
+    headers: { 'Content-Security-Policy': buildCsp(nonce) },
+  });
 });
 
 export const config = {
