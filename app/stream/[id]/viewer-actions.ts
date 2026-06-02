@@ -1,0 +1,66 @@
+'use server';
+
+import { eq, and } from 'drizzle-orm';
+import { revalidatePath } from 'next/cache';
+import { RoomServiceClient } from 'livekit-server-sdk';
+import { assertAuth, assertOwnerOrAdmin, AuthError } from '@/lib/auth';
+import db from '@/lib/db';
+import { streams, streamMembers, streamBans } from '@/lib/db/schema';
+
+export async function requestToJoin(streamId: string) {
+  const user = await assertAuth();
+
+  const ban = await db.query.streamBans.findFirst({
+    where: and(eq(streamBans.streamId, streamId), eq(streamBans.userId, user.id)),
+  });
+  if (ban) throw new AuthError(403, 'You are banned from this stream');
+
+  const existing = await db.query.streamMembers.findFirst({
+    where: and(eq(streamMembers.streamId, streamId), eq(streamMembers.userId, user.id)),
+  });
+  if (!existing) {
+    await db.insert(streamMembers).values({ streamId, userId: user.id, status: 'pending' });
+  }
+  revalidatePath(`/stream/${streamId}`);
+}
+
+export async function kickParticipant(streamId: string, targetUserId: string) {
+  const stream = await db.query.streams.findFirst({ where: eq(streams.id, streamId) });
+  if (!stream) throw new AuthError(404 as never, 'Stream not found');
+  await assertOwnerOrAdmin(stream.hostId);
+
+  if (stream.livekitRoomName) {
+    const roomService = new RoomServiceClient(
+      process.env.NEXT_PUBLIC_LIVEKIT_URL!,
+      process.env.LIVEKIT_API_KEY!,
+      process.env.LIVEKIT_API_SECRET!,
+    );
+    try { await roomService.removeParticipant(stream.livekitRoomName, targetUserId); } catch {}
+  }
+}
+
+export async function banParticipant(streamId: string, targetUserId: string) {
+  const stream = await db.query.streams.findFirst({ where: eq(streams.id, streamId) });
+  if (!stream) throw new AuthError(404 as never, 'Stream not found');
+  await assertOwnerOrAdmin(stream.hostId);
+
+  // Kick from room first
+  if (stream.livekitRoomName) {
+    const roomService = new RoomServiceClient(
+      process.env.NEXT_PUBLIC_LIVEKIT_URL!,
+      process.env.LIVEKIT_API_KEY!,
+      process.env.LIVEKIT_API_SECRET!,
+    );
+    try { await roomService.removeParticipant(stream.livekitRoomName, targetUserId); } catch {}
+  }
+
+  // Upsert ban (stream_bans has a unique index on streamId+userId)
+  const existing = await db.query.streamBans.findFirst({
+    where: and(eq(streamBans.streamId, streamId), eq(streamBans.userId, targetUserId)),
+  });
+  if (!existing) {
+    await db.insert(streamBans).values({ streamId, userId: targetUserId });
+  }
+
+  revalidatePath(`/stream/${streamId}`);
+}

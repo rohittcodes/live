@@ -1,65 +1,242 @@
-import Image from "next/image";
+import Link from 'next/link';
+import { desc, eq } from 'drizzle-orm';
+import db from '@/lib/db';
+import { streams, videos, audioRooms, communityPosts } from '@/lib/db/schema';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { RadioIcon, VideoIcon, MicIcon, MessageSquareIcon } from 'lucide-react';
 
-export default function Home() {
+export default async function HomePage() {
+  const subdomain = process.env.CLOUDFLARE_STREAM_CUSTOMER_SUBDOMAIN;
+
+  const [liveStreams, activeRooms, upcomingRooms, recentVideos, recentPosts] = await Promise.all([
+    db.query.streams.findMany({
+      where: eq(streams.isLive, true),
+      with: { host: true },
+      limit: 4,
+    }),
+    db.query.audioRooms.findMany({
+      where: eq(audioRooms.status, 'active'),
+      with: { host: true },
+      limit: 4,
+    }),
+    db.query.audioRooms.findMany({
+      where: eq(audioRooms.status, 'scheduled'),
+      with: { host: true },
+      orderBy: audioRooms.scheduledAt,
+      limit: 4,
+    }),
+    db.query.videos.findMany({
+      where: eq(videos.isPublished, true),
+      with: { host: true },
+      orderBy: desc(videos.createdAt),
+      limit: 8,
+    }),
+    db.query.communityPosts.findMany({
+      where: eq(communityPosts.isPublished, true),
+      with: { author: true },
+      orderBy: desc(communityPosts.publishedAt),
+      limit: 3,
+    }),
+  ]);
+
+  const liveNow = [
+    ...liveStreams.map((s) => ({ type: 'stream' as const, item: s })),
+    ...activeRooms.map((r) => ({ type: 'room' as const, item: r })),
+  ];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="w-full p-4 space-y-10">
+      {/* Hero */}
+      <section className="rounded-xl border bg-gradient-to-br from-muted/60 to-muted/20 px-6 py-8 space-y-2">
+        <h1 className="text-2xl font-bold tracking-tight">Live</h1>
+        <p className="text-sm text-muted-foreground max-w-md">
+          Watch live streams, join audio rooms, catch up on videos, and connect with the community.
+        </p>
+        <div className="flex flex-wrap gap-3 pt-2">
+          <Link href="/videos" className="text-xs text-primary underline underline-offset-4">Browse videos</Link>
+          <Link href="/rooms" className="text-xs text-primary underline underline-offset-4">Audio rooms</Link>
+          <Link href="/community" className="text-xs text-primary underline underline-offset-4">Community</Link>
+          <Link href="/creators" className="text-xs text-primary underline underline-offset-4">Creators</Link>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      {/* Live Now */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <Badge variant="destructive" className="animate-pulse">LIVE</Badge>
+          Live Now
+        </h2>
+        {liveNow.length === 0 ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><RadioIcon /></EmptyMedia>
+              <EmptyTitle>Nothing live right now</EmptyTitle>
+              <EmptyDescription>Check back later or browse videos in the meantime.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {liveNow.map(({ type, item }) => (
+              <Link key={item.id} href={type === 'stream' ? `/stream/${item.id}` : `/rooms/${item.id}`}>
+                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                  {type === 'stream' && (item as typeof liveStreams[number]).thumbnailUrl ? (
+                    <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl">
+                      <img
+                        src={(item as typeof liveStreams[number]).thumbnailUrl!}
+                        alt={item.title}
+                        className="h-full w-full object-cover"
+                      />
+                      <Badge variant="destructive" className="absolute top-2 left-2 animate-pulse text-xs">LIVE</Badge>
+                    </div>
+                  ) : (
+                    <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl flex items-center justify-center">
+                      {type === 'room'
+                        ? <MicIcon className="size-8 text-muted-foreground/40" />
+                        : <VideoIcon className="size-8 text-muted-foreground/40" />
+                      }
+                      <Badge variant="destructive" className="absolute top-2 left-2 animate-pulse text-xs">LIVE</Badge>
+                      {type === 'room' && (
+                        <Badge variant="secondary" className="absolute top-2 right-2 text-xs">Audio</Badge>
+                      )}
+                    </div>
+                  )}
+                  <CardHeader>
+                    <CardTitle className="line-clamp-1 text-sm">{item.title}</CardTitle>
+                    <CardDescription className="text-xs">{item.host.name}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Upcoming Audio Rooms */}
+      {upcomingRooms.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Upcoming Audio Rooms</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {upcomingRooms.map((room) => (
+              <Link key={room.id} href={`/rooms/${room.id}`}>
+                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="line-clamp-1 text-sm">{room.title}</CardTitle>
+                      <Badge variant="secondary" className="shrink-0 text-xs">Audio</Badge>
+                    </div>
+                    <CardDescription className="text-xs">
+                      {room.host.name}
+                      {room.scheduledAt && <> · {new Date(room.scheduledAt).toLocaleDateString()}</>}
+                    </CardDescription>
+                  </CardHeader>
+                  {room.description && (
+                    <CardContent>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{room.description}</p>
+                    </CardContent>
+                  )}
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Videos */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Videos</h2>
+          <Link href="/videos" className="text-xs text-muted-foreground hover:text-foreground">See all</Link>
         </div>
-      </main>
+        {recentVideos.length === 0 ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><VideoIcon /></EmptyMedia>
+              <EmptyTitle>No videos yet</EmptyTitle>
+              <EmptyDescription>Published videos will appear here.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {recentVideos.map((video) => {
+              const thumb = subdomain && video.cloudflareVideoId
+                ? `https://customer-${subdomain}.cloudflarestream.com/${video.cloudflareVideoId}/thumbnails/thumbnail.jpg`
+                : null;
+              return (
+                <Link key={video.id} href={`/videos/${video.id}`}>
+                  <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                    <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl">
+                      {thumb ? (
+                        <img src={thumb} alt={video.title} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                          {video.status !== 'ready' ? 'Processing…' : 'No thumbnail'}
+                        </div>
+                      )}
+                      {video.duration && (
+                        <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1 py-0.5 text-xs text-white">
+                          {formatDuration(video.duration)}
+                        </span>
+                      )}
+                    </div>
+                    <CardHeader>
+                      <CardTitle className="line-clamp-1 text-sm">{video.title}</CardTitle>
+                      <CardDescription className="text-xs">
+                        {video.host.name} · {video.totalViews.toLocaleString()} views
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Community */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Community</h2>
+          <Link href="/community" className="text-xs text-muted-foreground hover:text-foreground">See all</Link>
+        </div>
+        {recentPosts.length === 0 ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><MessageSquareIcon /></EmptyMedia>
+              <EmptyTitle>No posts yet</EmptyTitle>
+              <EmptyDescription>Community posts will appear here.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {recentPosts.map((post) => (
+              <Link key={post.id} href={`/community/${post.id}`}>
+                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer h-full">
+                  <CardHeader>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="outline" className="text-xs capitalize">{post.type}</Badge>
+                    </div>
+                    <CardTitle className="line-clamp-2 text-sm">{post.title}</CardTitle>
+                    <CardDescription className="text-xs">{post.author.name}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-muted-foreground line-clamp-3">{post.content}</p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
+}
+
+function formatDuration(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
