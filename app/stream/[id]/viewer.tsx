@@ -42,7 +42,10 @@ import { PollPanel } from './poll-panel';
 import { ClipButton } from './clip-button';
 import { useStreamStatus } from './use-stream-status';
 import { useKeyboardShortcuts } from './use-keyboard-shortcuts';
-import type { StreamMember, User } from '@/lib/db/schema';
+import type { StreamMember } from '@/lib/db/schema';
+
+type SafeRequestUser = { id: string; name: string; username: string | null; imageUrl: string | null };
+type SafePendingRequest = StreamMember & { user: SafeRequestUser };
 
 type MemberStatus = 'none' | 'pending' | 'accepted' | 'rejected';
 
@@ -72,7 +75,7 @@ type Props = {
   viewerUserId: string | null;
   isHost: boolean;
   memberStatus: MemberStatus;
-  pendingRequests: (StreamMember & { user: User })[];
+  pendingRequests: SafePendingRequest[];
 };
 
 export function StreamViewer({ stream, viewerUserId, isHost, memberStatus, pendingRequests }: Props) {
@@ -202,7 +205,7 @@ function RoomInner({
   viewerUserId: string | null;
   isHost: boolean;
   memberStatus: MemberStatus;
-  pendingRequests: (StreamMember & { user: User })[];
+  pendingRequests: SafePendingRequest[];
   containerRef: React.RefObject<HTMLDivElement | null>;
   reactRef: React.MutableRefObject<((type: 'heart' | 'fire' | 'clap' | 'wow' | 'laugh') => void) | null>;
   pending: boolean;
@@ -304,7 +307,7 @@ function JoinRequestsPanel({
   requests,
   streamId,
 }: {
-  requests: (StreamMember & { user: User })[];
+  requests: SafePendingRequest[];
   streamId: string;
 }) {
   const [pending, startTransition] = useTransition();
