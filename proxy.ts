@@ -12,8 +12,13 @@ const isPublicRoute = createRouteMatcher([
   '/stream/(.*)',       // anyone can watch streams
   '/community(.*)',
   '/creators(.*)',
+  '/search',
+  '/opengraph-image',   // root OG image — fetched unauthenticated by link-preview crawlers
+  '/robots.txt',
+  '/sitemap.xml',
   '/api/livekit/token', // handles its own auth per token type
   '/api/webhooks(.*)', // Clerk webhook must be unauthenticated
+  '/api/search', // public search, rate-limited by IP
 ]);
 
 const isAdminRoute = createRouteMatcher(['/admin(.*)']);
