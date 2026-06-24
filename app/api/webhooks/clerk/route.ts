@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { type NextRequest } from 'next/server';
 import db from '@/lib/db';
 import { users } from '@/lib/db/schema';
+import { sendWelcomeEmail } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,19 +13,24 @@ export async function POST(request: NextRequest) {
       const { id, first_name, last_name, username, email_addresses, image_url } = evt.data;
       const name = [first_name, last_name].filter(Boolean).join(' ') || 'Anonymous';
       const email = email_addresses[0]?.email_address ?? '';
+      const isNew = evt.type === 'user.created';
 
       try {
         await db
           .insert(users)
-          .values({ id, name, username: username ?? null, email, imageUrl: image_url })
+          .values({ id, name, username: username || null, email, imageUrl: image_url })
           .onConflictDoUpdate({
             target: users.id,
-            set: { name, username: username ?? null, email, imageUrl: image_url, updatedAt: new Date() },
+            set: { name, username: username || null, email, imageUrl: image_url, updatedAt: new Date() },
           });
       } catch (syncErr) {
         // Unique constraint on email/username — log and continue so webhook returns 200
         // (prevents Clerk retry loops when a duplicate exists)
         console.error('[clerk webhook] user sync conflict, skipping:', id, syncErr);
+      }
+
+      if (isNew && email) {
+        sendWelcomeEmail({ to: email, name }).catch(() => {});
       }
     }
 

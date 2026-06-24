@@ -4,6 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 import db from '@/lib/db';
 import { audioRooms, users } from '@/lib/db/schema';
 import { AudioRoom } from './room';
+import { BreadcrumbLabel } from '@/components/breadcrumb-labels';
 
 export default async function AudioRoomPage({
   params,
@@ -25,6 +26,7 @@ export default async function AudioRoomPage({
 
   return (
     <div className="flex h-screen flex-col bg-background">
+      <BreadcrumbLabel id={id} name={room.title} />
       <AudioRoom room={room} type={type} />
     </div>
   );

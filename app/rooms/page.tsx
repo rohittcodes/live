@@ -1,5 +1,11 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { desc, inArray } from 'drizzle-orm';
+
+export const metadata: Metadata = {
+  title: 'Rooms',
+  description: 'Join live audio rooms.',
+};
 import db from '@/lib/db';
 import { audioRooms } from '@/lib/db/schema';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';

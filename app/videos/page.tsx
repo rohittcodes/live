@@ -1,5 +1,11 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { desc, eq } from 'drizzle-orm';
+
+export const metadata: Metadata = {
+  title: 'Videos',
+  description: 'Browse all published videos.',
+};
 import db from '@/lib/db';
 import { videos } from '@/lib/db/schema';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';

@@ -4,30 +4,36 @@ import { assertAdmin, AuthError } from '@/lib/auth';
 import db from '@/lib/db';
 import { users } from '@/lib/db/schema';
 
-/** PATCH /api/admin/users  — promote or demote a user's role */
+/** PATCH /api/admin/users  — promote/demote role or ban/unban */
 export async function PATCH(req: NextRequest) {
   try {
-    await assertAdmin();
+    const admin = await assertAdmin();
 
-    const body = await req.json();
-    const { userId, role } = body as { userId?: string; role?: string };
+    const body = await req.json() as { userId?: string; role?: string; isBanned?: boolean };
+    const { userId } = body;
 
-    if (!userId || !role) {
-      return Response.json({ error: 'userId and role are required' }, { status: 400 });
-    }
-    if (role !== 'user' && role !== 'admin') {
-      return Response.json({ error: 'role must be "user" or "admin"' }, { status: 400 });
-    }
+    if (!userId) return Response.json({ error: 'userId is required' }, { status: 400 });
+    if (userId === admin.id) return Response.json({ error: 'Cannot modify your own account' }, { status: 400 });
 
     const target = await db.query.users.findFirst({ where: eq(users.id, userId) });
     if (!target) return Response.json({ error: 'User not found' }, { status: 404 });
 
-    await db
-      .update(users)
-      .set({ role, updatedAt: new Date() })
-      .where(eq(users.id, userId));
+    if ('role' in body) {
+      const { role } = body;
+      if (role !== 'user' && role !== 'admin') {
+        return Response.json({ error: 'role must be "user" or "admin"' }, { status: 400 });
+      }
+      await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
+      return Response.json({ ok: true, userId, role });
+    }
 
-    return Response.json({ ok: true, userId, role });
+    if ('isBanned' in body) {
+      const isBanned = Boolean(body.isBanned);
+      await db.update(users).set({ isBanned, updatedAt: new Date() }).where(eq(users.id, userId));
+      return Response.json({ ok: true, userId, isBanned });
+    }
+
+    return Response.json({ error: 'Nothing to update' }, { status: 400 });
   } catch (err) {
     if (err instanceof AuthError) return err.toResponse();
     console.error('[admin/users PATCH]', err);

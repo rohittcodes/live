@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import db from '@/lib/db';
@@ -8,12 +8,30 @@ export type AuthUser = NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
 
 // ─── Low-level ────────────────────────────────────────────────────────────────
 
-/** Returns the DB user for the signed-in Clerk session, or null. */
+/** Returns the DB user for the signed-in Clerk session, or null.
+ *  Syncs username + imageUrl from Clerk when the DB record is stale. */
 export async function getCurrentUser() {
   try {
     const { userId } = await auth();
     if (!userId) return null;
-    return await db.query.users.findFirst({ where: eq(users.id, userId) }) ?? null;
+
+    const dbUser = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    if (!dbUser) return null;
+
+    // If username is missing, pull fresh data from Clerk (request-cached, no extra network hop)
+    if (!dbUser.username) {
+      const clerkUser = await currentUser();
+      const freshUsername = clerkUser?.username || null;
+      const freshImage = clerkUser?.imageUrl ?? dbUser.imageUrl;
+      if (freshUsername || freshImage !== dbUser.imageUrl) {
+        await db.update(users)
+          .set({ username: freshUsername, imageUrl: freshImage, updatedAt: new Date() })
+          .where(eq(users.id, userId));
+        return { ...dbUser, username: freshUsername, imageUrl: freshImage };
+      }
+    }
+
+    return dbUser;
   } catch (err) {
     console.error('[getCurrentUser]', err);
     return null;
@@ -63,9 +81,7 @@ export class AuthError extends Error {
 
 /** Assert signed-in in an API route or server action. Throws AuthError on failure. */
 export async function assertAuth(): Promise<AuthUser> {
-  const { userId } = await auth();
-  if (!userId) throw new AuthError(401, 'Unauthorized');
-  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  const user = await getCurrentUser();
   if (!user) throw new AuthError(401, 'Unauthorized');
   return user;
 }

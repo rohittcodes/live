@@ -1,8 +1,9 @@
 import { WebhookReceiver, EgressStatus } from 'livekit-server-sdk';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { type NextRequest } from 'next/server';
 import db from '@/lib/db';
-import { streams, audioRooms, videos } from '@/lib/db/schema';
+import { streams, audioRooms, videos, streamMembers, follows, users } from '@/lib/db/schema';
+import { sendRecordingReadyEmail, sendGoLiveEmail } from '@/lib/email';
 
 const receiver = new WebhookReceiver(
   process.env.LIVEKIT_API_KEY!,
@@ -17,14 +18,20 @@ export async function POST(req: NextRequest) {
     const event = await receiver.receive(body, authorization);
 
     switch (event.event) {
-      // RTMP ingress connected → mark stream live
+      // RTMP ingress connected → mark stream live (atomic: only fires once even if replayed)
       case 'ingress_started': {
         const ingressId = event.ingressInfo?.ingressId;
         if (ingressId) {
-          await db
+          const [updated] = await db
             .update(streams)
             .set({ isLive: true, updatedAt: new Date() })
-            .where(eq(streams.ingressId, ingressId));
+            .where(and(eq(streams.ingressId, ingressId), eq(streams.isLive, false)))
+            .returning();
+          if (updated) {
+            notifyMembers(updated.id, updated.title)
+              .then((memberUserIds) => notifyFollowers(updated.hostId, updated.title, updated.id, memberUserIds))
+              .catch(() => {});
+          }
         }
         break;
       }
@@ -61,10 +68,16 @@ export async function POST(req: NextRequest) {
       case 'track_published': {
         const roomName = event.room?.name;
         if (roomName && roomName.startsWith('stream-')) {
-          await db
+          const [updated] = await db
             .update(streams)
             .set({ isLive: true, updatedAt: new Date() })
-            .where(eq(streams.livekitRoomName, roomName));
+            .where(and(eq(streams.livekitRoomName, roomName), eq(streams.isLive, false)))
+            .returning();
+          if (updated) {
+            notifyMembers(updated.id, updated.title)
+              .then((memberUserIds) => notifyFollowers(updated.hostId, updated.title, updated.id, memberUserIds))
+              .catch(() => {});
+          }
         }
         break;
       }
@@ -137,6 +150,8 @@ export async function POST(req: NextRequest) {
           updatedAt: new Date(),
         }).where(eq(streams.id, stream.id));
 
+        sendRecordingReadyEmail({ streamTitle: stream.title, videoId: video.id }).catch(() => {});
+
         break;
       }
     }
@@ -148,13 +163,44 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Converts s3://bucket/path → public R2 URL
+async function notifyMembers(streamId: string, streamTitle: string): Promise<Set<string>> {
+  const members = await db.query.streamMembers.findMany({
+    where: and(eq(streamMembers.streamId, streamId), eq(streamMembers.status, 'accepted')),
+    with: { user: true },
+  });
+  await Promise.allSettled(
+    members.map((m) =>
+      sendGoLiveEmail({ to: m.user.email, userName: m.user.name, streamTitle, streamId }),
+    ),
+  );
+  return new Set(members.map((m) => m.userId));
+}
+
+async function notifyFollowers(hostId: string, streamTitle: string, streamId: string, alreadyNotified: Set<string>) {
+  const followerRows = await db.query.follows.findMany({
+    where: eq(follows.followingId, hostId),
+    with: { follower: true },
+  });
+  await Promise.allSettled(
+    followerRows
+      .filter((f) => !alreadyNotified.has(f.followerId))
+      .map((f) =>
+        sendGoLiveEmail({ to: f.follower.email, userName: f.follower.name, streamTitle, streamId }),
+      ),
+  );
+}
+
+// Converts s3://bucket/path → public R2 URL, validating origin matches env config
 function buildR2PublicUrl(s3Location: string): string | null {
   try {
     const withoutScheme = s3Location.replace(/^s3:\/\/[^/]+\//, '');
     const base = process.env.CLOUDFLARE_R2_PUBLIC_URL;
     if (!base) return null;
-    return `${base.replace(/\/$/, '')}/${withoutScheme}`;
+    const url = `${base.replace(/\/$/, '')}/${withoutScheme}`;
+    // Ensure the constructed URL stays within the configured R2 origin (SSRF guard)
+    const expectedOrigin = new URL(base).origin;
+    if (new URL(url).origin !== expectedOrigin) return null;
+    return url;
   } catch {
     return null;
   }

@@ -19,6 +19,7 @@ import {
   UploadIcon,
   MessageSquareIcon,
   UsersIcon,
+  ExternalLinkIcon,
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useTheme } from '@/components/theme-provider';
@@ -47,6 +48,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SearchTrigger } from '@/components/search-bar';
 
 const browseItems = [
   { title: 'Home', href: '/', icon: HomeIcon },
@@ -88,6 +90,32 @@ function ThemeToggle() {
   );
 }
 
+const ECOSYSTEM_LINKS = [
+  { label: 'rohitt.codes',     href: 'https://rohitt.codes' },
+  { label: 'blog',             href: 'https://blog.rohitt.codes' },
+  { label: 'pro',              href: 'https://pro.rohitt.codes' },
+  { label: 'os',               href: 'https://os.rohitt.codes' },
+];
+
+function EcosystemLinks() {
+  return (
+    <div className="flex items-center gap-1 flex-wrap group-data-[collapsible=icon]:hidden">
+      {ECOSYSTEM_LINKS.map((link) => (
+        <a
+          key={link.href}
+          href={link.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs text-sidebar-foreground/50 hover:text-sidebar-foreground/80 transition-colors"
+        >
+          {link.label}
+          <ExternalLinkIcon className="size-2 opacity-60" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function UserFooter() {
   const { user } = useUser();
   if (!user) return null;
@@ -100,6 +128,7 @@ function UserFooter() {
 
   return (
     <div className="flex flex-col gap-2">
+      <EcosystemLinks />
       <ThemeToggle />
       <div className="flex items-center gap-2 rounded-lg px-1 py-1">
         <Avatar size="sm">
@@ -157,8 +186,13 @@ export function AppSidebar({ isSignedIn = false, isAdmin = false }: AppSidebarPr
       <SidebarHeader className="h-12 border-b border-sidebar-border justify-center">
         <Link
           href="/"
-          className="flex items-center gap-3 px-2 group-data-[collapsible=icon]:justify-center"
+          className="flex items-center gap-2.5 px-2 group-data-[collapsible=icon]:justify-center"
         >
+          <img
+            src="/rohitt.png"
+            alt="rohittcodes"
+            className="size-7 rounded-full object-cover shrink-0"
+          />
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
             <span className="text-[15px] font-bold tracking-tight text-sidebar-foreground leading-none">
               Live
@@ -171,6 +205,11 @@ export function AppSidebar({ isSignedIn = false, isAdmin = false }: AppSidebarPr
       </SidebarHeader>
 
       <SidebarContent>
+        {/* Search trigger */}
+        <div className="px-3 pt-2 pb-1">
+          <SearchTrigger />
+        </div>
+
         {/* Browse — public */}
         <SidebarGroup>
           <SidebarGroupLabel>Browse</SidebarGroupLabel>
@@ -297,6 +336,7 @@ export function AppSidebar({ isSignedIn = false, isAdmin = false }: AppSidebarPr
           <UserFooter />
         ) : (
           <div className="flex flex-col gap-2 group-data-[collapsible=icon]:hidden">
+            <EcosystemLinks />
             <ThemeToggle />
             <SignInButton>
               <Button size="sm" variant="secondary" className="w-full">

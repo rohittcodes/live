@@ -17,9 +17,17 @@ export async function createStream(
 
     const title = (formData.get('title') as string)?.trim();
     const description = (formData.get('description') as string)?.trim() || null;
+    const scheduledAtRaw = (formData.get('scheduledAt') as string)?.trim() || null;
 
     if (!title) return { error: 'Title is required.' };
     if (title.length > 120) return { error: 'Title must be 120 characters or fewer.' };
+
+    let scheduledAt: Date | null = null;
+    if (scheduledAtRaw) {
+      scheduledAt = new Date(scheduledAtRaw);
+      if (isNaN(scheduledAt.getTime())) return { error: 'Invalid scheduled time.' };
+      if (scheduledAt <= new Date()) return { error: 'Scheduled time must be in the future.' };
+    }
 
     const roomName = `stream-${crypto.randomUUID()}`;
 
@@ -43,6 +51,7 @@ export async function createStream(
         hostId: user.id,
         title,
         description,
+        scheduledAt,
         livekitRoomName: roomName,
         ingressId: ingressInfo.ingressId,
         rtmpUrl: ingressInfo.url ?? null,

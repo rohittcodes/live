@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, pgEnum, integer, index, json } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean, pgEnum, integer, index, json, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
@@ -22,6 +22,7 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   imageUrl: text('image_url'),
   role: userRoleEnum('role').default('user').notNull(),
+  isBanned: boolean('is_banned').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -50,6 +51,11 @@ export const streams = pgTable('streams', {
   // Aggregates kept in sync for fast reads
   totalViews: integer('total_views').default(0).notNull(),
   peakConcurrentViewers: integer('peak_concurrent_viewers').default(0).notNull(),
+  chatSettings: json('chat_settings').$type<{
+    slowModeSeconds: number | null;
+    followersOnly: boolean;
+    wordFilters: string[];
+  }>().default({ slowModeSeconds: null, followersOnly: false, wordFilters: [] }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -175,6 +181,17 @@ export const videoViews = pgTable('video_views', {
   index('video_views_video_id_idx').on(t.videoId),
 ]);
 
+// Saves playback position per user so videos can be resumed.
+export const videoProgress = pgTable('video_progress', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  videoId: text('video_id').notNull().references(() => videos.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  positionSeconds: integer('position_seconds').notNull().default(0),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('video_progress_unique').on(t.videoId, t.userId),
+]);
+
 // Host can ban a user from a specific stream — blocks comments, reactions, join requests.
 export const streamBans = pgTable('stream_bans', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -200,6 +217,50 @@ export const streamViews = pgTable('stream_views', {
   index('stream_views_active_idx').on(t.streamId, t.leftAt),
 ]);
 
+export const streamPolls = pgTable('stream_polls', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  streamId: text('stream_id').notNull().references(() => streams.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  options: json('options').$type<string[]>().notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('stream_polls_stream_id_idx').on(t.streamId),
+]);
+
+export const streamPollVotes = pgTable('stream_poll_votes', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  pollId: text('poll_id').notNull().references(() => streamPolls.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  optionIndex: integer('option_index').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('stream_poll_votes_poll_id_idx').on(t.pollId),
+]);
+
+export const streamClips = pgTable('stream_clips', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  streamId: text('stream_id').notNull().references(() => streams.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  label: text('label'),
+  timestampSeconds: integer('timestamp_seconds').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('stream_clips_stream_id_idx').on(t.streamId),
+]);
+
+export const follows = pgTable('follows', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  followerId: text('follower_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  followingId: text('following_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('follows_unique').on(t.followerId, t.followingId),
+  index('follows_follower_idx').on(t.followerId),
+  index('follows_following_idx').on(t.followingId),
+]);
+
 // --- Relations ---
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -211,6 +272,10 @@ export const usersRelations = relations(users, ({ many }) => ({
   streamMembers: many(streamMembers),
   streamBans: many(streamBans),
   audioRoomParticipants: many(audioRoomParticipants),
+  streamPolls: many(streamPolls),
+  streamClips: many(streamClips),
+  followers: many(follows, { relationName: 'following' }),
+  following: many(follows, { relationName: 'follower' }),
 }));
 
 export const streamsRelations = relations(streams, ({ one, many }) => ({
@@ -220,6 +285,24 @@ export const streamsRelations = relations(streams, ({ one, many }) => ({
   reactions: many(reactions),
   bans: many(streamBans),
   views: many(streamViews),
+  polls: many(streamPolls),
+  clips: many(streamClips),
+}));
+
+export const streamPollsRelations = relations(streamPolls, ({ one, many }) => ({
+  stream: one(streams, { fields: [streamPolls.streamId], references: [streams.id] }),
+  creator: one(users, { fields: [streamPolls.createdBy], references: [users.id] }),
+  votes: many(streamPollVotes),
+}));
+
+export const streamPollVotesRelations = relations(streamPollVotes, ({ one }) => ({
+  poll: one(streamPolls, { fields: [streamPollVotes.pollId], references: [streamPolls.id] }),
+  user: one(users, { fields: [streamPollVotes.userId], references: [users.id] }),
+}));
+
+export const streamClipsRelations = relations(streamClips, ({ one }) => ({
+  stream: one(streams, { fields: [streamClips.streamId], references: [streams.id] }),
+  user: one(users, { fields: [streamClips.userId], references: [users.id] }),
 }));
 
 export const streamMembersRelations = relations(streamMembers, ({ one }) => ({
@@ -240,11 +323,17 @@ export const reactionsRelations = relations(reactions, ({ one }) => ({
 export const videosRelations = relations(videos, ({ one, many }) => ({
   host: one(users, { fields: [videos.hostId], references: [users.id] }),
   views: many(videoViews),
+  progress: many(videoProgress),
 }));
 
 export const videoViewsRelations = relations(videoViews, ({ one }) => ({
   video: one(videos, { fields: [videoViews.videoId], references: [videos.id] }),
   user: one(users, { fields: [videoViews.userId], references: [users.id] }),
+}));
+
+export const videoProgressRelations = relations(videoProgress, ({ one }) => ({
+  video: one(videos, { fields: [videoProgress.videoId], references: [videos.id] }),
+  user: one(users, { fields: [videoProgress.userId], references: [users.id] }),
 }));
 
 export const audioRoomsRelations = relations(audioRooms, ({ one, many }) => ({
@@ -271,6 +360,11 @@ export const communityPostsRelations = relations(communityPosts, ({ one }) => ({
   author: one(users, { fields: [communityPosts.authorId], references: [users.id] }),
 }));
 
+export const followsRelations = relations(follows, ({ one }) => ({
+  follower: one(users, { fields: [follows.followerId], references: [users.id], relationName: 'follower' }),
+  following: one(users, { fields: [follows.followingId], references: [users.id], relationName: 'following' }),
+}));
+
 export const usersRelations2 = relations(users, ({ many }) => ({
   communityPosts: many(communityPosts),
 }));
@@ -287,3 +381,8 @@ export type VideoView = typeof videoViews.$inferSelect;
 export type AudioRoom = typeof audioRooms.$inferSelect;
 export type AudioRoomParticipant = typeof audioRoomParticipants.$inferSelect;
 export type CommunityPost = typeof communityPosts.$inferSelect;
+export type StreamPoll = typeof streamPolls.$inferSelect;
+export type StreamPollVote = typeof streamPollVotes.$inferSelect;
+export type StreamClip = typeof streamClips.$inferSelect;
+export type VideoProgress = typeof videoProgress.$inferSelect;
+export type Follow = typeof follows.$inferSelect;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import React, { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   LiveKitRoom,
@@ -24,6 +24,7 @@ import {
   CheckIcon, XIcon,
   UserMinusIcon, BanIcon,
   CircleIcon, CircleStopIcon,
+  EyeIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,19 +36,35 @@ import { requestToJoin, kickParticipant, banParticipant } from './viewer-actions
 import { startRecording, stopRecording } from '@/app/dashboard/streams/[id]/recording-actions';
 import { handleJoinRequest } from '@/app/dashboard/streams/[id]/actions';
 import { goLive, endStream } from '@/app/dashboard/streams/actions';
+import { ReactionsOverlay } from './reactions';
+import { Countdown } from './countdown';
+import { PollPanel } from './poll-panel';
+import { ClipButton } from './clip-button';
+import { useStreamStatus } from './use-stream-status';
+import { useKeyboardShortcuts } from './use-keyboard-shortcuts';
 import type { StreamMember, User } from '@/lib/db/schema';
 
 type MemberStatus = 'none' | 'pending' | 'accepted' | 'rejected';
+
+type ChatSettings = {
+  slowModeSeconds: number | null;
+  followersOnly: boolean;
+  wordFilters: string[];
+};
 
 // Only fields the viewer UI needs — never include streamKey, rtmpUrl, ingressId
 type SafeStream = {
   id: string;
   title: string;
   isLive: boolean;
+  scheduledAt: string | null;
+  thumbnailUrl: string | null;
   livekitRoomName: string | null;
   recordingStatus: string | null;
   egressId: string | null;
   host: { name: string };
+  chatSettings: ChatSettings | null;
+  totalViews: number;
 };
 
 type Props = {
@@ -64,7 +81,10 @@ export function StreamViewer({ stream, viewerUserId, isHost, memberStatus, pendi
   const [streamEnded, setStreamEnded] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const reactRef = useRef<((type: 'heart' | 'fire' | 'clap' | 'wow' | 'laugh') => void) | null>(null);
   const { setLabel } = useBreadcrumbLabels();
+  const { viewerCount } = useStreamStatus(stream.id, stream.isLive, stream.title);
 
   useEffect(() => { setLabel(stream.id, stream.title); }, [stream.id, stream.title]);
 
@@ -75,13 +95,25 @@ export function StreamViewer({ stream, viewerUserId, isHost, memberStatus, pendi
       .then((d) => setToken(d.token));
   }, [stream.livekitRoomName, tokenType]);
 
+  const isScheduled = !stream.isLive && stream.scheduledAt && new Date(stream.scheduledAt) > new Date();
+
   if (!stream.isLive) {
     if (isHost) {
       return (
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center space-y-4">
+            {stream.thumbnailUrl && (
+              <img src={stream.thumbnailUrl} alt={stream.title} className="mx-auto w-64 rounded-lg object-cover aspect-video" />
+            )}
             <p className="text-2xl font-semibold">{stream.title}</p>
-            <p className="text-muted-foreground text-sm">You're not live yet. Start broadcasting from your browser.</p>
+            {isScheduled ? (
+              <div className="space-y-2">
+                <p className="text-muted-foreground text-sm">Stream starts in</p>
+                <Countdown scheduledAt={stream.scheduledAt!} />
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">You're not live yet. Start broadcasting from your browser.</p>
+            )}
             <Button
               disabled={pending}
               onClick={() => startTransition(async () => {
@@ -97,9 +129,20 @@ export function StreamViewer({ stream, viewerUserId, isHost, memberStatus, pendi
     }
     return (
       <div className="flex flex-1 items-center justify-center">
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-4">
+          {stream.thumbnailUrl && (
+            <img src={stream.thumbnailUrl} alt={stream.title} className="mx-auto w-64 rounded-lg object-cover aspect-video" />
+          )}
           <p className="text-2xl font-semibold">{stream.title}</p>
-          <p className="text-muted-foreground">Stream is offline</p>
+          {isScheduled ? (
+            <div className="space-y-2">
+              <p className="text-muted-foreground text-sm">Stream starts in</p>
+              <Countdown scheduledAt={stream.scheduledAt!} />
+              <p className="text-xs text-muted-foreground">by {stream.host.name}</p>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">Stream is offline</p>
+          )}
         </div>
       </div>
     );
@@ -134,7 +177,50 @@ export function StreamViewer({ stream, viewerUserId, isHost, memberStatus, pendi
       className="flex h-full overflow-hidden"
     >
       <RoomAudioRenderer />
+      <RoomInner
+        stream={stream}
+        viewerUserId={viewerUserId}
+        isHost={isHost}
+        memberStatus={memberStatus}
+        pendingRequests={pendingRequests}
+        containerRef={containerRef}
+        reactRef={reactRef}
+        pending={pending}
+        startTransition={startTransition}
+        viewerCount={viewerCount}
+        router={router}
+      />
+    </LiveKitRoom>
+  );
+}
 
+function RoomInner({
+  stream, viewerUserId, isHost, memberStatus, pendingRequests,
+  containerRef, reactRef, pending, startTransition, viewerCount, router,
+}: {
+  stream: SafeStream;
+  viewerUserId: string | null;
+  isHost: boolean;
+  memberStatus: MemberStatus;
+  pendingRequests: (StreamMember & { user: User })[];
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  reactRef: React.MutableRefObject<((type: 'heart' | 'fire' | 'clap' | 'wow' | 'laugh') => void) | null>;
+  pending: boolean;
+  startTransition: (fn: () => Promise<void>) => void;
+  viewerCount: number;
+  router: ReturnType<typeof useRouter>;
+}) {
+  const { toggle: toggleMic } = useTrackToggle({ source: Track.Source.Microphone });
+
+  useKeyboardShortcuts({
+    onReaction: (type) => reactRef.current?.(type),
+    onMuteToggle: toggleMic,
+    containerRef,
+    enabled: stream.isLive,
+  });
+
+  return (
+    <div ref={containerRef} className="flex flex-1 overflow-hidden min-w-0">
       {/* Main video area */}
       <div className="flex flex-1 flex-col min-w-0">
         {/* Top bar */}
@@ -150,6 +236,12 @@ export function StreamViewer({ stream, viewerUserId, isHost, memberStatus, pendi
             <span className="hidden text-sm text-muted-foreground sm:block">
               by {stream.host.name}
             </span>
+            {viewerCount > 0 && (
+              <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
+                <EyeIcon className="size-3" />
+                {viewerCount.toLocaleString()}
+              </span>
+            )}
           </div>
 
           {viewerUserId && !isHost && (
@@ -174,8 +266,9 @@ export function StreamViewer({ stream, viewerUserId, isHost, memberStatus, pendi
         </div>
 
         {/* Video stage */}
-        <div className="flex-1 overflow-hidden">
+        <div className="relative flex-1 overflow-hidden">
           <VideoStage isViewer={!isHost && memberStatus !== 'accepted'} />
+          <ReactionsOverlay streamId={stream.id} userId={viewerUserId} reactRef={reactRef} />
         </div>
 
         {/* Controls */}
@@ -186,6 +279,7 @@ export function StreamViewer({ stream, viewerUserId, isHost, memberStatus, pendi
             streamId={stream.id}
             egressId={stream.egressId ?? null}
             recordingStatus={stream.recordingStatus ?? null}
+            showClip={!!viewerUserId}
           />
         </div>
       </div>
@@ -196,12 +290,13 @@ export function StreamViewer({ stream, viewerUserId, isHost, memberStatus, pendi
           <JoinRequestsPanel requests={pendingRequests} streamId={stream.id} />
         )}
         {isHost && <ParticipantsPanel streamId={stream.id} />}
+        <PollPanel userId={viewerUserId} isHost={isHost} />
         <div className="flex h-12 shrink-0 items-center border-b px-4 text-sm font-medium">
           Chat
         </div>
-        <StreamChat />
+        <StreamChat chatSettings={stream.chatSettings} memberStatus={memberStatus} />
       </div>
-    </LiveKitRoom>
+    </div>
   );
 }
 
@@ -327,19 +422,58 @@ function VideoStage({ isViewer }: { isViewer: boolean }) {
   );
 }
 
-function StreamChat() {
+function StreamChat({ chatSettings, memberStatus }: { chatSettings: ChatSettings | null; memberStatus: MemberStatus }) {
   const { chatMessages, send } = useChat();
   const [text, setText] = useState('');
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [slowCooldown, setSlowCooldown] = useState(0);
+  const lastSentAt = useRef<number>(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  // Slow mode countdown ticker
+  useEffect(() => {
+    if (slowCooldown <= 0) return;
+    const t = setTimeout(() => setSlowCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [slowCooldown]);
+
+  const isFollowersOnly = chatSettings?.followersOnly ?? false;
+  const canChat = !isFollowersOnly || memberStatus === 'accepted';
+
   const handleSend = () => {
     const trimmed = text.trim();
     if (!trimmed || !send) return;
+    setChatError(null);
+
+    if (!canChat) {
+      setChatError('Followers only');
+      return;
+    }
+
+    if (chatSettings?.slowModeSeconds && lastSentAt.current) {
+      const elapsed = (Date.now() - lastSentAt.current) / 1000;
+      if (elapsed < chatSettings.slowModeSeconds) {
+        const remaining = Math.ceil(chatSettings.slowModeSeconds - elapsed);
+        setSlowCooldown(remaining);
+        return;
+      }
+    }
+
+    if (chatSettings?.wordFilters?.length) {
+      const lower = trimmed.toLowerCase();
+      const hit = chatSettings.wordFilters.find((w) => lower.includes(w.toLowerCase()));
+      if (hit) {
+        setChatError('Message contains a filtered word.');
+        return;
+      }
+    }
+
     send(trimmed);
+    lastSentAt.current = Date.now();
     setText('');
   };
 
@@ -361,28 +495,41 @@ function StreamChat() {
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
-      <div className="shrink-0 border-t p-2 flex gap-2">
-        <Input
-          className="h-8 text-sm"
-          placeholder="Say something…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-        />
-        <Button size="sm" className="h-8 px-3" onClick={handleSend} disabled={!text.trim()}>
-          Send
-        </Button>
+      <div className="shrink-0 border-t p-2 space-y-1">
+        {chatError && <p className="text-[10px] text-destructive px-1">{chatError}</p>}
+        {isFollowersOnly && !canChat && (
+          <p className="text-[10px] text-muted-foreground px-1">Followers only — request to join to chat</p>
+        )}
+        <div className="flex gap-2">
+          <Input
+            className="h-8 text-sm"
+            placeholder={isFollowersOnly && !canChat ? 'Followers only' : 'Say something…'}
+            value={text}
+            disabled={!canChat}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSend(); } }}
+          />
+          <Button
+            size="sm"
+            className="h-8 px-3 shrink-0"
+            onClick={handleSend}
+            disabled={!text.trim() || !canChat || slowCooldown > 0}
+          >
+            {slowCooldown > 0 ? `${slowCooldown}s` : 'Send'}
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-function StreamControls({ isHost, isParticipant, streamId, egressId, recordingStatus }: {
+function StreamControls({ isHost, isParticipant, streamId, egressId, recordingStatus, showClip }: {
   isHost: boolean;
   isParticipant: boolean;
   streamId: string;
   egressId: string | null;
   recordingStatus: string | null;
+  showClip?: boolean;
 }) {
   const canPublish = isHost || isParticipant;
   const [recPending, startRecTransition] = useTransition();
@@ -451,6 +598,8 @@ function StreamControls({ isHost, isParticipant, streamId, egressId, recordingSt
           )}
         </>
       )}
+
+      {showClip && <ClipButton streamId={streamId} />}
 
       <Button
         size="sm" variant="destructive"

@@ -1,5 +1,11 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { desc, eq } from 'drizzle-orm';
+
+export const metadata: Metadata = {
+  title: 'Community',
+  description: 'Read and discuss community posts.',
+};
 import db from '@/lib/db';
 import { communityPosts } from '@/lib/db/schema';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';

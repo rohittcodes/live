@@ -12,10 +12,20 @@ async function verifySignature(body: string, header: string | null): Promise<boo
 
   if (!header) return false;
 
-  const parts = Object.fromEntries(header.split(',').map((p) => p.split('=')));
+  // Parse header carefully — values may contain '=' (e.g. base64), so only split on first '='
+  const parts: Record<string, string> = {};
+  for (const segment of header.split(',')) {
+    const eq = segment.indexOf('=');
+    if (eq === -1) continue;
+    parts[segment.slice(0, eq).trim()] = segment.slice(eq + 1).trim();
+  }
   const timestamp = parts['time'];
   const signature = parts['sig1'];
   if (!timestamp || !signature) return false;
+
+  // Reject events older than 5 minutes (replay protection)
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));
+  if (isNaN(age) || age > 300) return false;
 
   const key = await crypto.subtle.importKey(
     'raw',

@@ -5,7 +5,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export type DailyPoint = { date: string; streams: number; videos: number };
-export type ContentItem = { title: string; views: number; peak?: number };
+export type ContentItem = { title: string; views: number; peak?: number; host?: string };
 
 const trendConfig = {
   streams: { label: 'Stream Views', color: 'var(--chart-1)' },

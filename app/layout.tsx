@@ -10,6 +10,7 @@ import { BreadcrumbNav } from '@/components/breadcrumb-nav';
 import { BreadcrumbLabelsProvider } from '@/components/breadcrumb-labels';
 import { getCurrentUser } from '@/lib/auth';
 import { ThemeProvider } from '@/components/theme-provider';
+import { QueryProvider } from '@/components/query-provider';
 import './globals.css';
 
 const fontSans = DM_Sans({
@@ -31,8 +32,25 @@ const fontMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Live',
-  description: 'Personal live streaming & video platform',
+  title: {
+    default: 'Live by rohittcodes',
+    template: '%s · Live',
+  },
+  description: 'Personal live streaming & video platform by rohittcodes.',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'),
+  icons: { icon: '/rohitt.png', apple: '/rohitt.png' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Live by rohittcodes',
+    title: 'Live by rohittcodes',
+    description: 'Personal live streaming & video platform.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    creator: '@rohittcodes',
+    title: 'Live by rohittcodes',
+    description: 'Personal live streaming & video platform.',
+  },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -40,7 +58,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const nonce = headersList.get('x-nonce') ?? '';
 
   return (
-    <ClerkProvider>
+    <ClerkProvider nonce={nonce}>
       <html lang="en" suppressHydrationWarning>
         <head>
           {/* Runs before React hydration — prevents flash of wrong theme */}
@@ -56,6 +74,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           ` }} />
         </head>
         <body suppressHydrationWarning className={`${fontSans.variable} ${fontHeading.variable} ${fontMono.variable} antialiased font-sans`}>
+          <QueryProvider>
           <ThemeProvider>
           <BreadcrumbLabelsProvider>
           <TooltipProvider>
@@ -73,6 +92,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </TooltipProvider>
           </BreadcrumbLabelsProvider>
           </ThemeProvider>
+          </QueryProvider>
         </body>
       </html>
     </ClerkProvider>

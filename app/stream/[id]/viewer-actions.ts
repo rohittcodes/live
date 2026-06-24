@@ -6,11 +6,13 @@ import { headers } from 'next/headers';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import { assertAuth, assertOwnerOrAdmin, AuthError } from '@/lib/auth';
 import db from '@/lib/db';
-import { streams, streamMembers, streamBans } from '@/lib/db/schema';
+import { streams, streamMembers, streamBans, users } from '@/lib/db/schema';
 import { joinRequestLimiter, getIp } from '@/lib/ratelimit';
+import { sendJoinRequestReceivedEmail } from '@/lib/email';
 
 export async function requestToJoin(streamId: string) {
   const user = await assertAuth();
+  if (user.isBanned) throw new AuthError(403, 'Account banned');
 
   if (joinRequestLimiter) {
     const { success } = await joinRequestLimiter.limit(user.id);
@@ -30,6 +32,12 @@ export async function requestToJoin(streamId: string) {
   });
   if (!existing) {
     await db.insert(streamMembers).values({ streamId, userId: user.id, status: 'pending' });
+    // Fire-and-forget email to admin
+    sendJoinRequestReceivedEmail({
+      streamTitle: stream.title,
+      requesterName: user.name,
+      streamId,
+    }).catch(() => {});
   }
   revalidatePath(`/stream/${streamId}`);
 }
@@ -64,13 +72,15 @@ export async function banParticipant(streamId: string, targetUserId: string) {
     try { await roomService.removeParticipant(stream.livekitRoomName, targetUserId); } catch {}
   }
 
-  // Upsert ban (stream_bans has a unique index on streamId+userId)
-  const existing = await db.query.streamBans.findFirst({
-    where: and(eq(streamBans.streamId, streamId), eq(streamBans.userId, targetUserId)),
-  });
-  if (!existing) {
-    await db.insert(streamBans).values({ streamId, userId: targetUserId });
-  }
+  // Upsert ban and revoke membership so the token endpoint won't issue new publish tokens
+  await Promise.all([
+    db.insert(streamBans)
+      .values({ streamId, userId: targetUserId })
+      .onConflictDoNothing(),
+    db.update(streamMembers)
+      .set({ status: 'rejected' })
+      .where(and(eq(streamMembers.streamId, streamId), eq(streamMembers.userId, targetUserId))),
+  ]);
 
   revalidatePath(`/stream/${streamId}`);
 }

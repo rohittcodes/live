@@ -1,5 +1,11 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { desc, eq, count, sql } from 'drizzle-orm';
+
+export const metadata: Metadata = {
+  title: 'Creators',
+  description: 'Browse all creators on Live.',
+};
 import db from '@/lib/db';
 import { users, streams, videos } from '@/lib/db/schema';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -52,7 +58,7 @@ export default async function CreatorsPage() {
               .toUpperCase();
 
             return (
-              <Link key={creator.id} href={`/creators/${creator.id}`}>
+              <Link key={creator.id} href={`/creators/${creator.username ?? creator.id}`}>
                 <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
                   <CardHeader>
                     <div className="flex items-center gap-3">

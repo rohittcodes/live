@@ -25,10 +25,17 @@ function buildCsp(nonce: string): string {
   const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL ?? '';
   const r2Host = r2PublicUrl ? new URL(r2PublicUrl).host : '';
 
+  // Clerk production instances behind a custom domain proxy their JS/API at clerk.<app-host>
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+  const clerkCustomDomain = appUrl ? `clerk.${new URL(appUrl).host}` : '';
+
   return [
     "default-src 'self'",
     // nonce replaces unsafe-inline; unsafe-eval retained for LiveKit WASM codec
-    `script-src 'self' 'nonce-${nonce}' 'unsafe-eval'`,
+    [
+      `script-src 'self' 'nonce-${nonce}' 'unsafe-eval' https://*.clerk.accounts.dev`,
+      clerkCustomDomain && `https://${clerkCustomDomain}`,
+    ].filter(Boolean).join(' '),
     "style-src 'self' 'unsafe-inline'",
     [
       "img-src 'self' data: blob: https://imagedelivery.net https://img.clerk.com",
@@ -41,6 +48,7 @@ function buildCsp(nonce: string): string {
     ].filter(Boolean).join(' '),
     [
       "connect-src 'self' https://api.cloudflare.com https://clerk.com https://*.clerk.accounts.dev",
+      clerkCustomDomain && `https://${clerkCustomDomain}`,
       livekitHost && `wss://${livekitHost} https://${livekitHost}`,
     ].filter(Boolean).join(' '),
     "worker-src 'self' blob:",

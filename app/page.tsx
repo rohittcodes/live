@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, gt, and, inArray } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
 import db from '@/lib/db';
-import { streams, videos, audioRooms, communityPosts } from '@/lib/db/schema';
+import { streams, videos, audioRooms, communityPosts, follows } from '@/lib/db/schema';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
@@ -9,11 +10,18 @@ import { RadioIcon, VideoIcon, MicIcon, MessageSquareIcon } from 'lucide-react';
 
 export default async function HomePage() {
   const subdomain = process.env.CLOUDFLARE_STREAM_CUSTOMER_SUBDOMAIN;
+  const { userId } = await auth();
 
-  const [liveStreams, activeRooms, upcomingRooms, recentVideos, recentPosts] = await Promise.all([
+  const [liveStreams, upcomingStreams, activeRooms, upcomingRooms, recentVideos, recentPosts, followingRows] = await Promise.all([
     db.query.streams.findMany({
       where: eq(streams.isLive, true),
       with: { host: true },
+      limit: 4,
+    }),
+    db.query.streams.findMany({
+      where: and(eq(streams.isLive, false), gt(streams.scheduledAt, new Date())),
+      with: { host: true },
+      orderBy: streams.scheduledAt,
       limit: 4,
     }),
     db.query.audioRooms.findMany({
@@ -39,7 +47,19 @@ export default async function HomePage() {
       orderBy: desc(communityPosts.publishedAt),
       limit: 3,
     }),
+    userId
+      ? db.query.follows.findMany({ where: eq(follows.followerId, userId) })
+      : Promise.resolve([]),
   ]);
+
+  const followingIds = followingRows.map((f) => f.followingId);
+  const followingLive = followingIds.length > 0
+    ? await db.query.streams.findMany({
+        where: and(eq(streams.isLive, true), inArray(streams.hostId, followingIds)),
+        with: { host: true },
+        limit: 4,
+      })
+    : [];
 
   const liveNow = [
     ...liveStreams.map((s) => ({ type: 'stream' as const, item: s })),
@@ -61,6 +81,32 @@ export default async function HomePage() {
           <Link href="/creators" className="text-xs text-primary underline underline-offset-4">Creators</Link>
         </div>
       </section>
+
+      {/* Following — Live */}
+      {followingLive.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Following — Live Now</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {followingLive.map((s) => (
+              <Link key={s.id} href={`/stream/${s.id}`}>
+                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                  <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl">
+                    {s.thumbnailUrl
+                      ? <img src={s.thumbnailUrl} alt={s.title} className="h-full w-full object-cover" />
+                      : <div className="flex h-full items-center justify-center text-muted-foreground text-sm">Live</div>
+                    }
+                    <Badge variant="destructive" className="absolute top-2 right-2 text-[10px] animate-pulse">LIVE</Badge>
+                  </div>
+                  <CardHeader>
+                    <CardTitle className="line-clamp-1 text-sm">{s.title}</CardTitle>
+                    <CardDescription className="text-xs">{s.host.name}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Live Now */}
       <section className="space-y-4">
@@ -112,6 +158,38 @@ export default async function HomePage() {
           </div>
         )}
       </section>
+
+      {/* Upcoming Streams */}
+      {upcomingStreams.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Upcoming Streams</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {upcomingStreams.map((s) => (
+              <Link key={s.id} href={`/stream/${s.id}`}>
+                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                  <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl">
+                    {s.thumbnailUrl ? (
+                      <img src={s.thumbnailUrl} alt={s.title} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <RadioIcon className="size-8 text-muted-foreground/40" />
+                      </div>
+                    )}
+                    <Badge variant="secondary" className="absolute top-2 left-2 text-xs">Scheduled</Badge>
+                  </div>
+                  <CardHeader>
+                    <CardTitle className="line-clamp-1 text-sm">{s.title}</CardTitle>
+                    <CardDescription className="text-xs">
+                      {s.host.name}
+                      {s.scheduledAt && <> · {new Date(s.scheduledAt).toLocaleDateString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</>}
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Upcoming Audio Rooms */}
       {upcomingRooms.length > 0 && (

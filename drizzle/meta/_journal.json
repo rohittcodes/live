@@ -36,6 +36,34 @@
       "when": 1780431775767,
       "tag": "0004_flaky_radioactive_man",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780685998836,
+      "tag": "0005_dark_hardball",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780687937474,
+      "tag": "0006_lazy_captain_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780689077077,
+      "tag": "0007_puzzling_zuras",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780690332511,
+      "tag": "0008_wide_warbird",
+      "breakpoints": true
     }
   ]
 }

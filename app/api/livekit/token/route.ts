@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { assertAuth, AuthError } from '@/lib/auth';
 import db from '@/lib/db';
-import { streams, audioRooms, streamMembers, streamBans } from '@/lib/db/schema';
+import { streams, audioRooms, streamMembers, streamBans, users } from '@/lib/db/schema';
 import { viewerTokenLimiter, getIp } from '@/lib/ratelimit';
 
 export async function GET(req: NextRequest) {
@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     if (type === 'host') {
       // Hosts must be signed in and must actually own the stream/room.
       const user = await assertAuth();
+      if (user.isBanned) return Response.json({ error: 'Account banned' }, { status: 403 });
 
       const [stream, audioRoom] = await Promise.all([
         db.query.streams.findFirst({ where: eq(streams.livekitRoomName, room) }),
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
 
     if (type === 'participant') {
       const user = await assertAuth();
+      if (user.isBanned) return Response.json({ error: 'Account banned' }, { status: 403 });
 
       // Audio room participant
       const audioRoom = await db.query.audioRooms.findFirst({
@@ -74,15 +76,21 @@ export async function GET(req: NextRequest) {
         return Response.json({ token: await at.toJwt() });
       }
 
-      // Stream speaker — must be an accepted member
+      // Stream speaker — must be an accepted member and not banned
       const stream = await db.query.streams.findFirst({
         where: eq(streams.livekitRoomName, room),
       });
       if (!stream) return Response.json({ error: 'Room not found' }, { status: 404 });
 
-      const member = await db.query.streamMembers.findFirst({
-        where: and(eq(streamMembers.streamId, stream.id), eq(streamMembers.userId, user.id)),
-      });
+      const [member, streamBan] = await Promise.all([
+        db.query.streamMembers.findFirst({
+          where: and(eq(streamMembers.streamId, stream.id), eq(streamMembers.userId, user.id)),
+        }),
+        db.query.streamBans.findFirst({
+          where: and(eq(streamBans.streamId, stream.id), eq(streamBans.userId, user.id)),
+        }),
+      ]);
+      if (streamBan) return Response.json({ error: 'You are banned from this stream' }, { status: 403 });
       if (!member || member.status !== 'accepted') {
         return Response.json({ error: 'Not an accepted speaker' }, { status: 403 });
       }
@@ -109,12 +117,16 @@ export async function GET(req: NextRequest) {
     const streamRecord = await db.query.streams.findFirst({ where: eq(streams.livekitRoomName, room) });
     if (!streamRecord) return Response.json({ error: 'Stream not found' }, { status: 404 });
 
-    // Reject banned authenticated users
+    // Reject platform-banned or stream-banned authenticated users
     if (userId) {
-      const ban = await db.query.streamBans.findFirst({
-        where: and(eq(streamBans.streamId, streamRecord.id), eq(streamBans.userId, userId)),
-      });
-      if (ban) return Response.json({ error: 'You are banned from this stream' }, { status: 403 });
+      const [viewerUser, streamBan] = await Promise.all([
+        db.query.users.findFirst({ where: eq(users.id, userId) }),
+        db.query.streamBans.findFirst({
+          where: and(eq(streamBans.streamId, streamRecord.id), eq(streamBans.userId, userId)),
+        }),
+      ]);
+      if (viewerUser?.isBanned) return Response.json({ error: 'Account banned' }, { status: 403 });
+      if (streamBan) return Response.json({ error: 'You are banned from this stream' }, { status: 403 });
     }
 
     // Members-only streams require an accepted membership
@@ -128,7 +140,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const identity = userId ?? `anon-${crypto.randomUUID().slice(0, 8)}`;
+    const identity = userId ?? `anon-${crypto.randomUUID()}`;
 
     const at = new AccessToken(
       process.env.LIVEKIT_API_KEY!,

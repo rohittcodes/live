@@ -24,6 +24,12 @@ const LABELS: Record<string, string> = {
   admin: 'Admin',
   new: 'New',
   upload: 'Upload',
+  community: 'Community',
+  creators: 'Creators',
+  recap: 'Recap',
+  overlay: 'Overlay',
+  viewers: 'Viewers',
+  chat: 'Chat',
 };
 
 function isUUID(s: string) {
