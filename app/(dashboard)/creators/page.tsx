@@ -59,7 +59,7 @@ export default async function CreatorsPage() {
 
             return (
               <Link key={creator.id} href={`/creators/${creator.username ?? creator.id}`}>
-                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                <Card className="cursor-pointer transition-all duration-300">
                   <CardHeader>
                     <div className="flex items-center gap-3">
                       <Avatar className="size-10 shrink-0">

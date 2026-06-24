@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import db from '@/lib/db';
-import { communityPosts } from '@/lib/db/schema';
+import { communityPosts, postLikes } from '@/lib/db/schema';
+import { getCurrentUser } from '@/lib/auth';
+import { PostEngagement } from './post-engagement';
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -32,12 +34,24 @@ export default async function CommunityPostPage({
 }) {
   const { id } = await params;
 
-  const post = await db.query.communityPosts.findFirst({
-    where: eq(communityPosts.id, id),
-    with: { author: true },
-  });
+  const [post, currentUser] = await Promise.all([
+    db.query.communityPosts.findFirst({
+      where: eq(communityPosts.id, id),
+      with: {
+        author: true,
+        comments: { with: { user: true }, orderBy: (comments, { desc }) => [desc(comments.createdAt)] },
+      },
+    }),
+    getCurrentUser(),
+  ]);
 
   if (!post || !post.isPublished) notFound();
+
+  const liked = currentUser
+    ? !!(await db.query.postLikes.findFirst({
+        where: and(eq(postLikes.postId, id), eq(postLikes.userId, currentUser.id)),
+      }))
+    : false;
 
   return (
     <div className="w-full max-w-2xl mx-auto p-6 space-y-4">
@@ -71,6 +85,21 @@ export default async function CommunityPostPage({
           ))}
         </div>
       )}
+
+      <PostEngagement
+        postId={post.id}
+        postAuthorId={post.authorId}
+        initialLikesCount={post.likesCount}
+        initialLiked={liked}
+        initialComments={post.comments.map((c) => ({
+          id: c.id,
+          content: c.content,
+          createdAt: c.createdAt.toISOString(),
+          user: { id: c.user.id, name: c.user.name, imageUrl: c.user.imageUrl },
+        }))}
+        currentUser={currentUser ? { id: currentUser.id, name: currentUser.name, imageUrl: currentUser.imageUrl } : null}
+        isAdmin={currentUser?.role === 'admin'}
+      />
     </div>
   );
 }

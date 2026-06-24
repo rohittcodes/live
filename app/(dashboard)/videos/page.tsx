@@ -49,7 +49,7 @@ export default async function VideosPage() {
 
             return (
               <Link key={video.id} href={`/videos/${video.id}`}>
-                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                <Card className="cursor-pointer transition-all duration-300">
                   <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl">
                     {thumb ? (
                       <img src={thumb} alt={video.title} className="h-full w-full object-cover" />

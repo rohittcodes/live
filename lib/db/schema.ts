@@ -168,6 +168,26 @@ export const communityPosts = pgTable('community_posts', {
   index('community_posts_published_idx').on(t.isPublished, t.publishedAt),
 ]);
 
+export const postLikes = pgTable('post_likes', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  postId: text('post_id').notNull().references(() => communityPosts.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('post_likes_unique').on(t.postId, t.userId),
+  index('post_likes_post_id_idx').on(t.postId),
+]);
+
+export const postComments = pgTable('post_comments', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  postId: text('post_id').notNull().references(() => communityPosts.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('post_comments_post_id_idx').on(t.postId),
+]);
+
 // Per-session video watch tracking.
 // watchedSeconds updated periodically — compute completion rate as watchedSeconds / video.duration.
 export const videoViews = pgTable('video_views', {
@@ -356,8 +376,20 @@ export const streamViewsRelations = relations(streamViews, ({ one }) => ({
   user: one(users, { fields: [streamViews.userId], references: [users.id] }),
 }));
 
-export const communityPostsRelations = relations(communityPosts, ({ one }) => ({
+export const communityPostsRelations = relations(communityPosts, ({ one, many }) => ({
   author: one(users, { fields: [communityPosts.authorId], references: [users.id] }),
+  likes: many(postLikes),
+  comments: many(postComments),
+}));
+
+export const postLikesRelations = relations(postLikes, ({ one }) => ({
+  post: one(communityPosts, { fields: [postLikes.postId], references: [communityPosts.id] }),
+  user: one(users, { fields: [postLikes.userId], references: [users.id] }),
+}));
+
+export const postCommentsRelations = relations(postComments, ({ one }) => ({
+  post: one(communityPosts, { fields: [postComments.postId], references: [communityPosts.id] }),
+  user: one(users, { fields: [postComments.userId], references: [users.id] }),
 }));
 
 export const followsRelations = relations(follows, ({ one }) => ({
@@ -367,6 +399,8 @@ export const followsRelations = relations(follows, ({ one }) => ({
 
 export const usersRelations2 = relations(users, ({ many }) => ({
   communityPosts: many(communityPosts),
+  postLikes: many(postLikes),
+  postComments: many(postComments),
 }));
 
 export type User = typeof users.$inferSelect;
@@ -381,6 +415,8 @@ export type VideoView = typeof videoViews.$inferSelect;
 export type AudioRoom = typeof audioRooms.$inferSelect;
 export type AudioRoomParticipant = typeof audioRoomParticipants.$inferSelect;
 export type CommunityPost = typeof communityPosts.$inferSelect;
+export type PostLike = typeof postLikes.$inferSelect;
+export type PostComment = typeof postComments.$inferSelect;
 export type StreamPoll = typeof streamPolls.$inferSelect;
 export type StreamPollVote = typeof streamPollVotes.$inferSelect;
 export type StreamClip = typeof streamClips.$inferSelect;

@@ -49,6 +49,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SearchTrigger } from '@/components/search-bar';
+import { SidebarTips } from '@/components/sidebar-tips';
 
 const browseItems = [
   { title: 'Home', href: '/', icon: HomeIcon },
@@ -331,7 +332,8 @@ export function AppSidebar({ isSignedIn = false, isAdmin = false }: AppSidebarPr
         )}
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="gap-3">
+        <SidebarTips />
         {isSignedIn ? (
           <UserFooter />
         ) : (

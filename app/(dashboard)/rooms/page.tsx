@@ -44,7 +44,7 @@ export default async function RoomsPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {live.map((room) => (
                   <Link key={room.id} href={`/rooms/${room.id}`}>
-                    <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                    <Card className="cursor-pointer transition-all duration-300">
                       <CardHeader>
                         <div className="flex items-start justify-between gap-2">
                           <CardTitle className="line-clamp-1 text-sm">{room.title}</CardTitle>
@@ -70,7 +70,7 @@ export default async function RoomsPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {upcoming.map((room) => (
                   <Link key={room.id} href={`/rooms/${room.id}`}>
-                    <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                    <Card className="cursor-pointer transition-all duration-300">
                       <CardHeader>
                         <div className="flex items-start justify-between gap-2">
                           <CardTitle className="line-clamp-1 text-sm">{room.title}</CardTitle>

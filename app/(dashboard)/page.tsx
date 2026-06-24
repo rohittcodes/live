@@ -89,7 +89,7 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {followingLive.map((s) => (
               <Link key={s.id} href={`/stream/${s.id}`}>
-                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                <Card className="cursor-pointer transition-all duration-300">
                   <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl">
                     {s.thumbnailUrl
                       ? <img src={s.thumbnailUrl} alt={s.title} className="h-full w-full object-cover" />
@@ -126,7 +126,7 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {liveNow.map(({ type, item }) => (
               <Link key={item.id} href={type === 'stream' ? `/stream/${item.id}` : `/rooms/${item.id}`}>
-                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                <Card className="cursor-pointer transition-all duration-300">
                   {type === 'stream' && (item as typeof liveStreams[number]).thumbnailUrl ? (
                     <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl">
                       <img
@@ -166,7 +166,7 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {upcomingStreams.map((s) => (
               <Link key={s.id} href={`/stream/${s.id}`}>
-                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                <Card className="cursor-pointer transition-all duration-300">
                   <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl">
                     {s.thumbnailUrl ? (
                       <img src={s.thumbnailUrl} alt={s.title} className="h-full w-full object-cover" />
@@ -198,7 +198,7 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {upcomingRooms.map((room) => (
               <Link key={room.id} href={`/rooms/${room.id}`}>
-                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                <Card className="cursor-pointer transition-all duration-300">
                   <CardHeader>
                     <div className="flex items-start justify-between gap-2">
                       <CardTitle className="line-clamp-1 text-sm">{room.title}</CardTitle>
@@ -243,7 +243,7 @@ export default async function HomePage() {
                 : null;
               return (
                 <Link key={video.id} href={`/videos/${video.id}`}>
-                  <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer">
+                  <Card className="cursor-pointer transition-all duration-300">
                     <div className="aspect-video bg-muted relative overflow-hidden rounded-t-xl">
                       {thumb ? (
                         <img src={thumb} alt={video.title} className="h-full w-full object-cover" />
@@ -290,7 +290,7 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {recentPosts.map((post) => (
               <Link key={post.id} href={`/community/${post.id}`}>
-                <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer h-full">
+                <Card className="cursor-pointer transition-all duration-300 h-full">
                   <CardHeader>
                     <div className="flex items-center gap-2 mb-1">
                       <Badge variant="outline" className="text-xs capitalize">{post.type}</Badge>
