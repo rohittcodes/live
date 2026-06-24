@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { createPoll } from '@/app/stream/[id]/poll-actions';
+import { createPoll } from '@/app/(dashboard)/stream/[id]/poll-actions';
 
 export function CreatePollDialog({ streamId }: { streamId: string }) {
   const [open, setOpen] = useState(false);
