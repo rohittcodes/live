@@ -38,7 +38,7 @@ function buildCsp(nonce: string): string {
     "default-src 'self'",
     // nonce replaces unsafe-inline; unsafe-eval retained for LiveKit WASM codec
     [
-      `script-src 'self' 'nonce-${nonce}' 'unsafe-eval' https://*.clerk.accounts.dev`,
+      `script-src 'self' 'nonce-${nonce}' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com`,
       clerkCustomDomain && `https://${clerkCustomDomain}`,
     ].filter(Boolean).join(' '),
     "style-src 'self' 'unsafe-inline'",
@@ -52,12 +52,13 @@ function buildCsp(nonce: string): string {
       r2Host && `https://${r2Host}`,
     ].filter(Boolean).join(' '),
     [
-      "connect-src 'self' https://api.cloudflare.com https://clerk.com https://*.clerk.accounts.dev",
+      "connect-src 'self' https://api.cloudflare.com https://clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
       clerkCustomDomain && `https://${clerkCustomDomain}`,
       livekitHost && `wss://${livekitHost} https://${livekitHost}`,
     ].filter(Boolean).join(' '),
     "worker-src 'self' blob:",
     "font-src 'self'",
+    "frame-src https://challenges.cloudflare.com",
     "frame-ancestors 'none'",
   ].join('; ');
 }
